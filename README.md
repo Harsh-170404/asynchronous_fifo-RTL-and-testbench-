@@ -66,7 +66,9 @@ The design was validated with multiple test scenarios:
 6. Constrained-random traffic testing  
 7. Pointer wrap-around validation  
 8. Mid-operation reset recovery  
-9. Simultaneous read/write operation  
+9. Simultaneous read/write operation
+
+The outputs of the simulation are present in the [outputs]([url](https://github.com/Harsh-170404/asynchronous_fifo-RTL-and-testbench-/tree/main/outputs)) folder
 
 ---
 
