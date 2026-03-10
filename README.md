@@ -1,4 +1,4 @@
-### Asynchronous FIFO — RTL Design & Verification (SystemVerilog)
+# Asynchronous FIFO — RTL Design & Verification (SystemVerilog)
 
 A complete **CDC-safe Asynchronous FIFO** implementation with a **transaction-based SystemVerilog verification environment** built from scratch.
 
