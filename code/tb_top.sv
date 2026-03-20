@@ -236,30 +236,45 @@ class monitor #(parameter data_width = 8);
     fork monitor_write(); monitor_read(); join
   endtask
 
-  task monitor_write();
-    transaction tr;
-    forever begin
-      @(posedge vif.wr_clk);
-      if (vif.wr_en && !vif.fifo_full) begin
-        tr = new(); tr.wr_en = 1; tr.data = vif.data_in;
-        mon2scb.put(tr.copy());
-        $display("[MON] Captured WRITE: data=0x%0h", tr.data);
-      end
-    end
-  endtask
+task monitor_write();
+  transaction tr;
 
-  task monitor_read();
-    transaction tr;
-    forever begin
-      @(posedge vif.rd_clk);
-      if (vif.rd_en && !vif.fifo_empty) begin
-        @(posedge vif.rd_clk);
-        tr = new(); tr.rd_en = 1; tr.data = vif.data_out;
-        mon2scb.put(tr.copy());
-        $display("[MON] Captured READ:  data=0x%0h", tr.data);
-      end
+  forever begin
+    @(vif.wr_cb);
+
+    if (!vif.wr_rst && vif.wr_cb.wr_en && !vif.wr_cb.fifo_full) begin
+      tr = new();
+      tr.wr_en = 1;
+      tr.data  = vif.wr_cb.data_in;
+
+      mon2scb.put(tr.copy());
+
+      $display("[MON][%0t] WRITE data=0x%0h",
+                $time, tr.data);
     end
-  endtask
+  end
+endtask
+
+task monitor_read();
+  transaction tr;
+
+  forever begin
+    @(vif.rd_cb);
+
+    if (!vif.rd_rst && vif.rd_cb.rd_en && !vif.rd_cb.fifo_empty) begin
+      @(vif.rd_cb); // latency
+
+      tr = new();
+      tr.rd_en = 1;
+      tr.data  = vif.rd_cb.data_out;
+
+      mon2scb.put(tr.copy());
+
+      $display("[MON][%0t] READ data=0x%0h",
+                $time, tr.data);
+    end
+  end
+endtask
 
 endclass
 
