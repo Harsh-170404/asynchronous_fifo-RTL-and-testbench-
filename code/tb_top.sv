@@ -159,37 +159,63 @@ class driver;
     $display("[DRV] Reset released");
   endtask
 
-  task run();
-    transaction tr;
-    forever begin
-      gen2drv.get(tr);
+task run();
+  transaction tr;
 
-      // ── WRITE ────────────────────────────────────────
+  // Wait until reset is deasserted in both domains
+  wait (!vif.wr_rst && !vif.rd_rst);
+
+  forever begin
+    // Get next transaction
+    gen2drv.get(tr);
+
+    fork
+
+      // ================= WRITE =================
       if (tr.wr_en) begin
-        @(posedge vif.wr_clk);
-        if (!vif.fifo_full && !vif.wr_rst) begin
-          vif.wr_en   <= 1;
-          vif.data_in <= tr.data;
-          @(posedge vif.wr_clk);
-          vif.wr_en <= 0;
-          $display("[DRV] Write: data=0x%0h @ %0t", tr.data, $time);
-        end else
-          $display("[DRV] Write SKIPPED - FULL or RESET @ %0t", $time);
+        // Align to write clocking block
+        @(vif.wr_cb);
+
+        // Assertion (reset-aware)
+        assert (vif.wr_rst || !vif.wr_cb.fifo_full)
+          else $error("[DRV][%0t] Write when FIFO FULL", $time);
+
+        // Drive write
+        vif.wr_cb.data_in <= tr.data;
+        vif.wr_cb.wr_en   <= 1;
+
+        // Hold for one cycle
+        @(vif.wr_cb);
+        vif.wr_cb.wr_en <= 0;
+
+        $display("[DRV][%0t] WRITE data=0x%0h full=%0b",
+                  $time, tr.data, vif.wr_cb.fifo_full);
       end
 
-      // ── READ ─────────────────────────────────────────
+      // ================= READ =================
       if (tr.rd_en) begin
-        repeat (3) @(posedge vif.rd_clk);
-        if (!vif.fifo_empty && !vif.rd_rst) begin
-          vif.rd_en <= 1;
-          @(posedge vif.rd_clk);
-          vif.rd_en <= 0;
-          $display("[DRV] Read triggered @ %0t", $time);
-        end else
-          $display("[DRV] Read SKIPPED - EMPTY or RESET @ %0t", $time);
+        // Align to read clocking block
+        @(vif.rd_cb);
+
+        // Assertion (reset-aware)
+        assert (vif.rd_rst || !vif.rd_cb.fifo_empty)
+          else $error("[DRV][%0t] Read when FIFO EMPTY", $time);
+
+        // Drive read
+        vif.rd_cb.rd_en <= 1;
+
+        // Hold for one cycle
+        @(vif.rd_cb);
+        vif.rd_cb.rd_en <= 0;
+
+        $display("[DRV][%0t] READ triggered empty=%0b",
+                  $time, vif.rd_cb.fifo_empty);
       end
-    end
-  endtask
+
+    join
+
+  end
+endtask
 
 endclass
 
@@ -210,30 +236,45 @@ class monitor #(parameter data_width = 8);
     fork monitor_write(); monitor_read(); join
   endtask
 
-  task monitor_write();
-    transaction tr;
-    forever begin
-      @(posedge vif.wr_clk);
-      if (vif.wr_en && !vif.fifo_full) begin
-        tr = new(); tr.wr_en = 1; tr.data = vif.data_in;
-        mon2scb.put(tr.copy());
-        $display("[MON] Captured WRITE: data=0x%0h", tr.data);
-      end
-    end
-  endtask
+task monitor_write();
+  transaction tr;
 
-  task monitor_read();
-    transaction tr;
-    forever begin
-      @(posedge vif.rd_clk);
-      if (vif.rd_en && !vif.fifo_empty) begin
-        @(posedge vif.rd_clk);
-        tr = new(); tr.rd_en = 1; tr.data = vif.data_out;
-        mon2scb.put(tr.copy());
-        $display("[MON] Captured READ:  data=0x%0h", tr.data);
-      end
+  forever begin
+    @(vif.wr_cb);
+
+    if (!vif.wr_rst && vif.wr_cb.wr_en && !vif.wr_cb.fifo_full) begin
+      tr = new();
+      tr.wr_en = 1;
+      tr.data  = vif.wr_cb.data_in;
+
+      mon2scb.put(tr.copy());
+
+      $display("[MON][%0t] WRITE data=0x%0h",
+                $time, tr.data);
     end
-  endtask
+  end
+endtask
+
+task monitor_read();
+  transaction tr;
+
+  forever begin
+    @(vif.rd_cb);
+
+    if (!vif.rd_rst && vif.rd_cb.rd_en && !vif.rd_cb.fifo_empty) begin
+      @(vif.rd_cb); // latency
+
+      tr = new();
+      tr.rd_en = 1;
+      tr.data  = vif.rd_cb.data_out;
+
+      mon2scb.put(tr.copy());
+
+      $display("[MON][%0t] READ data=0x%0h",
+                $time, tr.data);
+    end
+  end
+endtask
 
 endclass
 
